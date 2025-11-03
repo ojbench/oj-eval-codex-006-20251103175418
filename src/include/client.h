@@ -10,6 +10,8 @@ extern int total_mines;  // The count of mines of the game map.
 
 // You MUST NOT use any other external variables except for rows, columns and total_mines.
 
+static char observed[35][35];
+
 /**
  * @brief The definition of function Execute(int, int, bool)
  *
@@ -34,7 +36,12 @@ void Execute(int r, int c, int type);
  * will read the scale of the game map and the first step taken by the server (see README).
  */
 void InitGame() {
-  // TODO (student): Initialize all your global variables!
+  // Initialize all your global variables
+  for (int i = 0; i < 35; ++i) {
+    for (int j = 0; j < 35; ++j) {
+      observed[i][j] = '?';
+    }
+  }
   int first_row, first_column;
   std::cin >> first_row >> first_column;
   Execute(first_row, first_column, 0);
@@ -51,7 +58,13 @@ void InitGame() {
  *     01?
  */
 void ReadMap() {
-  // TODO (student): Implement me!
+  for (int i = 0; i < rows; ++i) {
+    std::string line;
+    std::cin >> line;
+    for (int j = 0; j < columns && j < (int)line.size(); ++j) {
+      observed[i][j] = line[j];
+    }
+  }
 }
 
 /**
@@ -61,10 +74,70 @@ void ReadMap() {
  * mind and make your decision here! Caution: you can only execute once in this function.
  */
 void Decide() {
-  // TODO (student): Implement me!
-  // while (true) {
-  //   Execute(0, 0);
-  // }
+  auto inb = [&](int r, int c) { return r >= 0 && r < rows && c >= 0 && c < columns; };
+  // 1) Auto-explore when safe: for any visited number cell where marked == number
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      char ch = observed[i][j];
+      if (ch >= '0' && ch <= '8') {
+        int num = ch - '0';
+        int marked_cnt = 0, unknown_cnt = 0;
+        for (int dr = -1; dr <= 1; ++dr) {
+          for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) continue;
+            int nr = i + dr, nc = j + dc;
+            if (!inb(nr, nc)) continue;
+            if (observed[nr][nc] == '@') ++marked_cnt;
+            else if (observed[nr][nc] == '?') ++unknown_cnt;
+          }
+        }
+        if (marked_cnt == num && unknown_cnt > 0) {
+          Execute(i, j, 2);  // auto-explore
+          return;
+        }
+      }
+    }
+  }
+
+  // 2) Mark obvious mines: unknown_cnt + marked_cnt == number
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      char ch = observed[i][j];
+      if (ch >= '0' && ch <= '8') {
+        int num = ch - '0';
+        int marked_cnt = 0;
+        int unknown_pos_r = -1, unknown_pos_c = -1, unknown_cnt = 0;
+        for (int dr = -1; dr <= 1; ++dr) {
+          for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) continue;
+            int nr = i + dr, nc = j + dc;
+            if (!inb(nr, nc)) continue;
+            if (observed[nr][nc] == '@') ++marked_cnt;
+            else if (observed[nr][nc] == '?') {
+              ++unknown_cnt;
+              unknown_pos_r = nr;
+              unknown_pos_c = nc;
+            }
+          }
+        }
+        if (unknown_cnt > 0 && marked_cnt + unknown_cnt == num) {
+          // Mark one of them (only one action per Decide)
+          Execute(unknown_pos_r, unknown_pos_c, 1);
+          return;
+        }
+      }
+    }
+  }
+
+  // 3) Fallback: visit any unknown cell (simple heuristic: pick the first '?')
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      if (observed[i][j] == '?') {
+        Execute(i, j, 0);
+        return;
+      }
+    }
+  }
 }
 
 #endif

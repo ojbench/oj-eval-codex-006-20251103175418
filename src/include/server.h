@@ -16,6 +16,56 @@ int total_mines;  // The count of mines of the game map. You MUST NOT modify its
                   // variable in function InitMap. It will be used in the advanced task.
 int game_state;  // The state of the game, 0 for continuing, 1 for winning, -1 for losing. You MUST NOT modify its name.
 
+// Internal game state
+static bool is_mine[35][35];
+static bool visited[35][35];
+static bool marked[35][35];
+static int adj_cnt[35][35];
+static int visited_non_mine_count;
+
+inline bool InBounds(int r, int c) { return r >= 0 && r < rows && c >= 0 && c < columns; }
+inline void RecomputeAdjCounts() {
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      int cnt = 0;
+      for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+          if (dr == 0 && dc == 0) continue;
+          int nr = i + dr, nc = j + dc;
+          if (InBounds(nr, nc) && is_mine[nr][nc]) ++cnt;
+        }
+      }
+      adj_cnt[i][j] = cnt;
+    }
+  }
+}
+
+inline void TryWin() {
+  if (visited_non_mine_count == rows * columns - total_mines) {
+    game_state = 1;
+  }
+}
+
+inline void VisitExpand(int r, int c) {
+  // Visit a non-mine cell and expand if its adj count is zero
+  if (!InBounds(r, c)) return;
+  if (visited[r][c] || marked[r][c]) return;  // marked cannot be visited
+  if (is_mine[r][c]) return;                  // should not be called on mines here
+  visited[r][c] = true;
+  ++visited_non_mine_count;
+  if (adj_cnt[r][c] == 0) {
+    for (int dr = -1; dr <= 1; ++dr) {
+      for (int dc = -1; dc <= 1; ++dc) {
+        if (dr == 0 && dc == 0) continue;
+        int nr = r + dr, nc = c + dc;
+        if (InBounds(nr, nc) && !visited[nr][nc] && !marked[nr][nc] && !is_mine[nr][nc]) {
+          VisitExpand(nr, nc);
+        }
+      }
+    }
+  }
+}
+
 /**
  * @brief The definition of function InitMap()
  *
@@ -30,7 +80,26 @@ int game_state;  // The state of the game, 0 for continuing, 1 for winning, -1 f
  */
 void InitMap() {
   std::cin >> rows >> columns;
-  // TODO (student): Implement me!
+  total_mines = 0;
+  game_state = 0;
+  visited_non_mine_count = 0;
+  for (int i = 0; i < 35; ++i) {
+    for (int j = 0; j < 35; ++j) {
+      is_mine[i][j] = false;
+      visited[i][j] = false;
+      marked[i][j] = false;
+      adj_cnt[i][j] = 0;
+    }
+  }
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      char ch;
+      std::cin >> ch;
+      is_mine[i][j] = (ch == 'X');
+      if (is_mine[i][j]) ++total_mines;
+    }
+  }
+  RecomputeAdjCounts();
 }
 
 /**
@@ -64,7 +133,19 @@ void InitMap() {
  * @note For invalid operation, you should not do anything.
  */
 void VisitBlock(int r, int c) {
-  // TODO (student): Implement me!
+  if (game_state != 0) return;
+  if (!InBounds(r, c)) return;
+  if (visited[r][c] || marked[r][c]) {
+    game_state = 0;
+    return;
+  }
+  if (is_mine[r][c]) {
+    visited[r][c] = true;  // reveal the mine
+    game_state = -1;
+    return;
+  }
+  VisitExpand(r, c);
+  TryWin();
 }
 
 /**
@@ -101,7 +182,20 @@ void VisitBlock(int r, int c) {
  * @note For invalid operation, you should not do anything.
  */
 void MarkMine(int r, int c) {
-  // TODO (student): Implement me!
+  if (game_state != 0) return;
+  if (!InBounds(r, c)) return;
+  if (visited[r][c] || marked[r][c]) {
+    game_state = 0;
+    return;
+  }
+  if (is_mine[r][c]) {
+    marked[r][c] = true;
+    TryWin();  // marking alone doesn't cause win, but keep consistency
+  } else {
+    // Wrong mark leads to immediate failure; show as X via PrintMap rules
+    marked[r][c] = true;  // keep the mark to allow PrintMap to show 'X'
+    game_state = -1;
+  }
 }
 
 /**
@@ -121,7 +215,30 @@ void MarkMine(int r, int c) {
  * And the game ends (and player wins).
  */
 void AutoExplore(int r, int c) {
-  // TODO (student): Implement me!
+  if (game_state != 0) return;
+  if (!InBounds(r, c)) return;
+  if (!visited[r][c] || is_mine[r][c]) return;  // only for visited non-mine cells
+  int marked_nei = 0;
+  for (int dr = -1; dr <= 1; ++dr) {
+    for (int dc = -1; dc <= 1; ++dc) {
+      if (dr == 0 && dc == 0) continue;
+      int nr = r + dr, nc = c + dc;
+      if (!InBounds(nr, nc)) continue;
+      if (marked[nr][nc] && is_mine[nr][nc]) ++marked_nei;
+    }
+  }
+  if (marked_nei != adj_cnt[r][c]) return;
+  for (int dr = -1; dr <= 1; ++dr) {
+    for (int dc = -1; dc <= 1; ++dc) {
+      if (dr == 0 && dc == 0) continue;
+      int nr = r + dr, nc = c + dc;
+      if (!InBounds(nr, nc)) continue;
+      if (!is_mine[nr][nc] && !visited[nr][nc] && !marked[nr][nc]) {
+        VisitExpand(nr, nc);
+      }
+    }
+  }
+  TryWin();
 }
 
 /**
@@ -134,7 +251,22 @@ void AutoExplore(int r, int c) {
  * @note If the player wins, we consider that ALL mines are correctly marked.
  */
 void ExitGame() {
-  // TODO (student): Implement me!
+  if (game_state == 1) {
+    std::cout << "YOU WIN!" << std::endl;
+  } else {
+    std::cout << "GAME OVER!" << std::endl;
+  }
+  int marked_mine_count = 0;
+  if (game_state == 1) {
+    marked_mine_count = total_mines;
+  } else {
+    for (int i = 0; i < rows; ++i) {
+      for (int j = 0; j < columns; ++j) {
+        if (marked[i][j] && is_mine[i][j]) ++marked_mine_count;
+      }
+    }
+  }
+  std::cout << visited_non_mine_count << " " << marked_mine_count;
   exit(0);  // Exit the game immediately
 }
 
@@ -163,7 +295,29 @@ void ExitGame() {
  * @note Use std::cout to print the game map, especially when you want to try the advanced task!!!
  */
 void PrintMap() {
-  // TODO (student): Implement me!
+  bool win = (game_state == 1);
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < columns; ++j) {
+      char ch = '?';
+      if (win) {
+        if (is_mine[i][j]) ch = '@';
+        else if (visited[i][j]) ch = static_cast<char>('0' + adj_cnt[i][j]);
+        else ch = '?';
+      } else {
+        if (visited[i][j]) {
+          if (is_mine[i][j]) ch = 'X';
+          else ch = static_cast<char>('0' + adj_cnt[i][j]);
+        } else if (marked[i][j]) {
+          if (is_mine[i][j]) ch = '@';
+          else ch = 'X';
+        } else {
+          ch = '?';
+        }
+      }
+      std::cout << ch;
+    }
+    std::cout << std::endl;
+  }
 }
 
 #endif
